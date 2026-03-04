@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-service
+  namespace: mlops-blue
+  labels:
+    app: inference
+spec:
+  selector:
+    app: inference
+    version: blue  # This will be switched during blue-green deployment
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-service-green
+  namespace: mlops-green
+  labels:
+    app: inference
+spec:
+  selector:
+    app: inference
+    version: green
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
+  type: ClusterIP

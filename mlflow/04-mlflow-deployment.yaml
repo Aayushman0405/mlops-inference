@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-server
+  namespace: mlops-blue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow-server
+  template:
+    metadata:
+      labels:
+        app: mlflow-server
+    spec:
+      containers:
+      - name: mlflow
+        image: aayud/mlflow-mysql:2.12.1  # Build this first
+        args:
+        - mlflow
+        - server
+        - --backend-store-uri
+        - mysql+pymysql://$(MYSQL_USER):$(MYSQL_PASSWORD)@mysql/$(DB_NAME)
+        - --default-artifact-root
+        - s3://$(BUCKET_NAME)/
+        - --host
+        - 0.0.0.0
+        - --port
+        - "5000"
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: MYSQL_PASSWORD
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: DB_NAME
+        - name: BUCKET_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: BUCKET_NAME
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MLFLOW_S3_ENDPOINT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: MLFLOW_S3_ENDPOINT_URL
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: AWS_DEFAULT_REGION
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"

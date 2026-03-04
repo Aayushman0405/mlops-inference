@@ -1,0 +1,168 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-nyc-taxi-model
+  namespace: mlflow
+spec:
+  template:
+    spec:
+      containers:
+      - name: trainer
+        image: python:3.9-slim
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Installing dependencies..."
+          pip install -q mlflow==2.12.1 pandas numpy scikit-learn boto3
+          
+          echo "Creating training script..."
+          cat > /tmp/train.py << 'PYTHON_SCRIPT'
+import mlflow
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from mlflow.tracking import MlflowClient
+import time
+import sys
+
+def main():
+    print("🚀 Training NYC Taxi Duration Model...")
+    mlflow.set_tracking_uri("http://mlflow-server:5000")
+    
+    # Test MLflow connection
+    try:
+        experiments = mlflow.search_experiments()
+        print(f"✅ Connected to MLflow. Found {len(experiments)} experiments")
+    except Exception as e:
+        print(f"❌ Failed to connect to MLflow: {e}")
+        sys.exit(1)
+    
+    # Generate synthetic training data
+    print("📊 Generating training data...")
+    np.random.seed(42)
+    n_samples = 5000
+    
+    data = pd.DataFrame({
+        "vendor_id": np.random.randint(1, 7, n_samples),
+        "passenger_count": np.random.randint(1, 6, n_samples),
+        "pickup_longitude": np.random.uniform(-74.05, -73.75, n_samples),
+        "pickup_latitude": np.random.uniform(40.60, 40.90, n_samples),
+        "dropoff_longitude": np.random.uniform(-74.05, -73.75, n_samples),
+        "dropoff_latitude": np.random.uniform(40.60, 40.90, n_samples),
+        "trip_distance": np.random.uniform(0.5, 30.0, n_samples),
+        "pickup_hour": np.random.randint(0, 24, n_samples),
+        "pickup_day": np.random.randint(0, 7, n_samples),
+        "store_and_fwd_flag_Y": np.random.randint(0, 2, n_samples),
+    })
+    
+    # Generate target (trip duration in minutes)
+    data["trip_duration"] = (
+        3 + 
+        0.5 * data["trip_distance"] + 
+        0.1 * data["passenger_count"] +
+        0.02 * np.abs(data["pickup_longitude"] - data["dropoff_longitude"]) * 100 +
+        0.02 * np.abs(data["pickup_latitude"] - data["dropoff_latitude"]) * 100 +
+        np.random.normal(0, 3, n_samples)
+    )
+    
+    X = data.drop("trip_duration", axis=1)
+    y = data["trip_duration"]
+    
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    
+    # Train model
+    print("🏋️ Training RandomForest model...")
+    model = RandomForestRegressor(
+        n_estimators=150,
+        max_depth=20,
+        random_state=42,
+        n_jobs=-1
+    )
+    model.fit(X_train, y_train)
+    
+    # Evaluate
+    y_pred = model.predict(X_test)
+    mae = np.mean(np.abs(y_pred - y_test))
+    print(f"✅ Model trained - MAE: {mae:.2f} minutes")
+    
+    # Log to MLflow
+    with mlflow.start_run(run_name="nyc_taxi_rf_production") as run:
+        mlflow.log_metric("mae", mae)
+        mlflow.log_param("n_estimators", 150)
+        mlflow.log_param("max_depth", 20)
+        
+        # Register model
+        print("📝 Registering model as 'nyc_taxi_rf'...")
+        model_info = mlflow.sklearn.log_model(
+            sk_model=model,
+            artifact_path="model",
+            registered_model_name="nyc_taxi_rf"
+        )
+        
+        print(f"✅ Model registered with run_id: {run.info.run_id}")
+        
+        # Wait for registration
+        time.sleep(5)
+        
+        # Get the latest version and set to production
+        client = MlflowClient()
+        try:
+            # Get the model version
+            versions = client.get_latest_versions("nyc_taxi_rf", stages=["None"])
+            if versions:
+                latest_version = versions[0].version
+                print(f"📦 Model version: {latest_version}")
+                
+                client.transition_model_version_stage(
+                    name="nyc_taxi_rf",
+                    version=latest_version,
+                    stage="Production"
+                )
+                print(f"✅ Model version {latest_version} set to Production")
+            else:
+                print("⚠️ No model versions found")
+        except Exception as e:
+            print(f"Note: Manual promotion may be required: {e}")
+    
+    print("\n🎉 Training job completed successfully!")
+
+if __name__ == "__main__":
+    main()
+PYTHON_SCRIPT
+
+          echo "Running training script..."
+          python /tmp/train.py
+          
+          echo "Job completed!"
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow-server:5000"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MLFLOW_S3_ENDPOINT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: MLFLOW_S3_ENDPOINT_URL
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: AWS_DEFAULT_REGION
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+      restartPolicy: Never
+  backoffLimit: 2

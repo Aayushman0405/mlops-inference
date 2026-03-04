@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mlops-blue
+  labels:
+    name: mlops-blue
+    environment: blue
+    app: mlops-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mlops-green
+  labels:
+    name: mlops-green
+    environment: green
+    app: mlops-platform

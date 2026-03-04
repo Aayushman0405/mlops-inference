@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlflow-config
+  namespace: mlops-blue
+data:
+  MLFLOW_TRACKING_URI: "http://mlflow-server:5000"
+  MLFLOW_S3_ENDPOINT_URL: "http://rook-ceph-rgw-mlflow-store.rook-ceph.svc.cluster.local"
+  AWS_DEFAULT_REGION: "us-east-1"
+  BUCKET_NAME: "mlflow-artifacts"
+  DB_HOST: "mysql"
+  DB_PORT: "3306"
+  DB_NAME: "mlflow"

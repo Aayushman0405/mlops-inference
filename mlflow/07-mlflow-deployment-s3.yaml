@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-server
+  namespace: mlflow
+  labels:
+    app: mlflow-server
+    component: tracking
+    version: "2.12.1"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mlflow-server
+  template:
+    metadata:
+      labels:
+        app: mlflow-server
+        component: tracking
+    spec:
+      initContainers:
+      - name: wait-for-mariadb
+        image: mariadb:10.11
+        command:
+        - sh
+        - -c
+        - |
+          until mysqladmin ping \
+            -h mlflow-mariadb.mlflow.svc.cluster.local \
+            -u aayushman \
+            -paayu2004 \
+            --silent; do
+            echo "Waiting for MariaDB..."
+            sleep 5
+          done
+          echo "MariaDB is ready!"
+      
+      - name: wait-for-s3
+        image: amazon/aws-cli
+        command:
+        - sh
+        - -c
+        - |
+          until aws s3 ls s3://mlflow-artifacts-1772014216 \
+            --endpoint-url $MLFLOW_S3_ENDPOINT_URL \
+            2>/dev/null; do
+            echo "Waiting for S3 bucket..."
+            sleep 5
+          done
+          echo "S3 bucket is ready!"
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MLFLOW_S3_ENDPOINT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: MLFLOW_S3_ENDPOINT_URL
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: AWS_DEFAULT_REGION
+
+      containers:
+      - name: mlflow
+        image: aayud/mlflow-mysql:2.12.1
+        command:
+        - mlflow
+        args:
+        - server
+        - --host
+        - 0.0.0.0
+        - --port
+        - "5000"
+        - --backend-store-uri
+        - mysql+pymysql://aayushman:aayu2004@mlflow-mariadb.mlflow.svc.cluster.local:3306/mlflow_db
+        - --default-artifact-root
+        - s3://mlflow-artifacts-1772014216/
+        - --workers
+        - "4"
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MLFLOW_S3_ENDPOINT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: MLFLOW_S3_ENDPOINT_URL
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: AWS_DEFAULT_REGION
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+        - name: MLFLOW_S3_IGNORE_TLS
+          value: "true"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"

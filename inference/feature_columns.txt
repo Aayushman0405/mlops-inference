@@ -1,0 +1,10 @@
+vendor_id
+passenger_count
+pickup_longitude
+pickup_latitude
+dropoff_longitude
+dropoff_latitude
+trip_distance
+pickup_hour
+pickup_day
+store_and_fwd_flag_Y

@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-nyc-taxi-model
+  namespace: mlflow
+spec:
+  template:
+    spec:
+      containers:
+      - name: trainer
+        image: python:3.9-slim
+        command:
+        - /bin/sh
+        - -c
+        - |
+          pip install mlflow==2.12.1 pandas numpy scikit-learn boto3
+          python /scripts/train.py
+        volumeMounts:
+        - name: script
+          mountPath: /scripts
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow.mlflow.svc.cluster.local:5000"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-s3-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MLFLOW_S3_ENDPOINT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: MLFLOW_S3_ENDPOINT_URL
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: AWS_DEFAULT_REGION
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+      volumes:
+      - name: script
+        configMap:
+          name: train-script
+          defaultMode: 0755
+      restartPolicy: Never
+  backoffLimit: 2

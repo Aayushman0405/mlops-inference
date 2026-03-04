@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-blue
+  namespace: mlops-blue
+  labels:
+    app: inference
+    version: blue
+    environment: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: inference
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: inference
+        version: blue
+        environment: blue
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: inference
+        image: aayud/nyc-taxi-inference:v2
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: inference-config
+              key: MODEL_NAME
+        - name: MODEL_ALIAS
+          valueFrom:
+            configMapKeyRef:
+              name: inference-config
+              key: MODEL_ALIAS
+        - name: MLFLOW_S3_ENDPOINT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: inference-config
+              key: MLFLOW_S3_ENDPOINT_URL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: inference-secrets
+              key: API_KEY
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: inference-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: inference-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow-server:5000"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /live
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: inference-blue-hpa
+  namespace: mlops-blue
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: inference-blue
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

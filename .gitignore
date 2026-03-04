@@ -1,0 +1,52 @@
+# Secrets and sensitive data
+**/02-secrets.yaml
+**/*-secrets.yaml
+**/secrets.yaml
+**/*secret*.yaml
+!**/*-secrets-template.yaml
+!**/*-secrets-example.yaml
+
+# Environment files
+.env
+*.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local testing
+*.local.yaml
+*.local.yml
+
+# Kubernetes local
+*.bak
+*.tmp
+
+# MLflow artifacts
+mlruns/
+mlartifacts/
+
+# Datasets
+*.csv
+*.parquet
+*.feather
+*.pkl
+*.joblib
